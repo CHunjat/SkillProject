@@ -1,27 +1,64 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class FireballLauncher : MonoBehaviour
 {
+    [Header("입력 설정")]
+    [Tooltip("이 스킬을 발동할 키를 선택하세요 (예: Q, W, E, Space)")]
+    [SerializeField] private Key skillKey = Key.Space;
+
     [Header("파이어볼 능력치")]
-    [SerializeField] private float spellTime = 2.0f;     // 시전 시간
-    [SerializeField] private float damage = 10f;          // 공격력
-    [SerializeField] private float range = 15f;           // 사거리
-    [SerializeField] private float speed = 10f;           // 속도
-    [SerializeField] private int projectileCount = 1;     // 투사체 갯수
-    [SerializeField] private float cooldown = 1f;         // 쿨타임
-    [SerializeField] private float spreadAngle = 15f;     // 다중 발사 각도
-    [SerializeField] private float postCastDelay = 0.5f;   // 후딜레이 시간
+    [SerializeField] private float spellTime = 2.0f;
+    [SerializeField] private float damage = 10f;
+    [SerializeField] private float range = 15f;
+    [SerializeField] private float speed = 10f;
+    [SerializeField] private int projectileCount = 1;
+    [SerializeField] private float cooldown = 1f;
+    [SerializeField] private float spreadAngle = 15f;
+    [SerializeField] private float postCastDelay = 0.5f;
 
     [Header("설정 및 프리팹")]
-    [SerializeField] private GameObject fireballPrefab;    // FireballProjectile 컴포넌트가 포함된 2D 프리팹
-    [SerializeField] private Transform spawnPoint;         // 발사 위치
+    [SerializeField] private GameObject fireballPrefab;
+    [SerializeField] private Transform spawnPoint;
+
+ 
 
     private float currentCooldown = 0f;
     private Coroutine castCoroutine;
 
+    // Action: 반환값이 없는 이벤트 (쿨타임 UI 업데이트용)
+    public Action<float> OnCooldownStarted;
+
+    // Func: 반환값이 있는 이벤트 (스킬 사용 가능 여부 체크용 - bool 반환)
+    public Func<bool> CheckCanCast;
+
     public bool IsCasting { get; private set; } = false;
+
+    private void Start()
+    {
+        // 1. Action 구독 (UI의 StartCooldown 함수를 이벤트에 연결)
+        //if (cooldownUI != null)
+        //{
+        //    OnCooldownStarted += cooldownUI.StartCooldown;
+        //}
+
+        // 2. Func 구독 (람다식을 사용해 시전 가능 조건을 정의 및 연결)
+        CheckCanCast += () =>
+        {
+            return currentCooldown <= 0 && !IsCasting;
+        };
+    }
+
+    private void OnDestroy()
+    {
+        //// 메모리 누수 방지를 위해 오브젝트가 파괴될 때 이벤트 구독 해제
+        //if (cooldownUI != null)
+        //{
+        //    OnCooldownStarted -= cooldownUI.StartCooldown;
+        //}
+    }
 
     private void Update()
     {
@@ -30,8 +67,7 @@ public class FireballLauncher : MonoBehaviour
             currentCooldown -= Time.deltaTime;
         }
 
-        // 스페이스바 입력 시 스킬 시전 시작
-        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+        if (Keyboard.current != null && Keyboard.current[skillKey].wasPressedThisFrame)
         {
             TryCastFireball();
         }
@@ -39,7 +75,11 @@ public class FireballLauncher : MonoBehaviour
 
     public void TryCastFireball()
     {
-        if (currentCooldown > 0 || IsCasting) return;
+        // ✅ Func Invoke: CheckCanCast에 연결된 함수가 false를 반환하면 시전 취소
+        if (CheckCanCast != null && CheckCanCast.Invoke() == false)
+        {
+            return;
+        }
 
         if (fireballPrefab == null || spawnPoint == null)
         {
@@ -70,7 +110,11 @@ public class FireballLauncher : MonoBehaviour
         Debug.Log("🚀 [발사 2D] 시전 완료! 파이어볼을 발사합니다.");
         SpawnProjectiles();
 
+        // 런처 내부의 쿨타임 데이터 갱신
         currentCooldown = cooldown;
+
+        // ✅ Action Invoke: OnCooldownStarted에 연결된 UI 함수들을 일제히 실행
+        OnCooldownStarted?.Invoke(cooldown);
 
         yield return new WaitForSeconds(postCastDelay);
         IsCasting = false;
@@ -86,7 +130,6 @@ public class FireballLauncher : MonoBehaviour
             float angleOffset = (startIdx + i) * spreadAngle;
             if (projectileCount % 2 == 0) angleOffset += spreadAngle / 2f;
 
-            // 💡 2D에서는 Z축을 기준으로 회전해야 평면상에서 부채꼴로 퍼집니다.
             Quaternion spawnRotation = spawnPoint.rotation * Quaternion.Euler(0, 0, angleOffset);
             GameObject projGo = Instantiate(fireballPrefab, spawnPoint.position, spawnRotation);
 
