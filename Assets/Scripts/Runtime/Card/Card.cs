@@ -31,7 +31,6 @@ public class Card : MonoBehaviour
         CardDescription.text = FormatAttackMessage(cardData.cardDescriptions);
     }
 
-    // 작성하신 함수 (약간의 방어 코드 추가)
     string FormatAttackMessage(CardDescriptions desc)
     {
         // 설명이 비어있으면 에러가 날 수 있으므로 예외 처리
